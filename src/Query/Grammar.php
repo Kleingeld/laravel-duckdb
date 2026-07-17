@@ -8,8 +8,6 @@ use Illuminate\Support\Str;
 
 class Grammar extends PostgresGrammar
 {
-    protected string $tablePrefix = '';
-    
     protected function compileFrom(Builder $query, $table)
     {
         if($this->isExpression($table)) {
@@ -28,9 +26,9 @@ class Grammar extends PostgresGrammar
 
     private function wrapFromClause($value, $prefixAlias = false){
         if(!Str::endsWith($value, ')')){//is function
-            return $this->quoteString(($prefixAlias?$this->tablePrefix:'').$value);
+            return $this->quoteString(($prefixAlias?$this->getTablePrefix():'').$value);
         }
-        return  ($prefixAlias?$this->tablePrefix:'').$value;
+        return  ($prefixAlias?$this->getTablePrefix():'').$value;
     }
 
     public function compileTruncate(Builder $query)
