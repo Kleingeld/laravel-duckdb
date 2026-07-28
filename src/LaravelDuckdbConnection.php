@@ -165,7 +165,7 @@ class LaravelDuckdbConnection extends PostgresConnection
         return true;
     }
 
-    public function select($query, $bindings = [], $useReadPdo = true)
+    public function select($query, $bindings = [], $useReadPdo = true, array $fetchUsing = [])
     {
         return $this->runQueryWithLog($query, $bindings);
     }
