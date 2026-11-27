@@ -2,6 +2,13 @@
 
 All notable changes to `laravel-duckdb` will be documented in this file.
 
+## v2.0.8 - 2026-11-27
+
+### Fixed
+
+- `laravel-duckdb:download-cli` raises PHP's `memory_limit` to `512M` while it runs, so downloading and extracting the CLI doesn't run out of memory. A higher limit or `-1` is left untouched.
+- The downloaded `.tar.gz` is now removed from the temp directory after extraction. Before, the archive was still held open and stayed behind.
+
 ## v2.0.7 - 2026-11-27
 
 ### Fixed
