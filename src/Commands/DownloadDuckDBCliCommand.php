@@ -13,7 +13,9 @@ class DownloadDuckDBCliCommand extends Command
 
     public function handle(): void
     {
-        $os = strtolower(php_uname('s'));
+        $this->raiseMemoryLimit('512M');
+
+        $os =strtolower(php_uname('s'));
         $arch = strtolower(php_uname('m'));
 
         $version = $this->option('ver') ? ltrim($this->option('ver'), 'vV') : null;
@@ -38,6 +40,36 @@ class DownloadDuckDBCliCommand extends Command
         } else {
             throw new \Exception('Not Supported! Currently Only linux, mac supported. Try manually downloading cli from: https://duckdb.org/docs/installation/');
         }
+    }
+
+    /**
+     * The CLI archive is downloaded and extracted in memory, so make sure there is
+     * enough room. Only raises the limit, never lowers it (and leaves -1 alone).
+     */
+    private function raiseMemoryLimit(string $limit): void
+    {
+        $current = ini_get('memory_limit');
+
+        if ($current === false || $current === '-1') {
+            return;
+        }
+
+        if ($this->toBytes($current) < $this->toBytes($limit)) {
+            ini_set('memory_limit', $limit);
+        }
+    }
+
+    private function toBytes(string $value): int
+    {
+        $value = trim($value);
+        $number = (int) $value;
+
+        return match (strtolower(substr($value, -1))) {
+            'g' => $number * 1024 ** 3,
+            'm' => $number * 1024 ** 2,
+            'k' => $number * 1024,
+            default => $number,
+        };
     }
 
     private function isMusl(): bool
@@ -107,6 +139,10 @@ class DownloadDuckDBCliCommand extends Command
     {
         $phar = new \PharData($archivePath);
         $phar->extractTo($targetDir, 'duckdb', true);
+
+        // Release the archive handle, otherwise the temp file cannot be removed.
+        unset($phar);
+        \Phar::unlinkArchive($archivePath);
     }
 
     private function extractZip(string $archivePath, string $targetDir): void
