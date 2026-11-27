@@ -16,55 +16,107 @@ class DownloadDuckDBCliCommand extends Command
         $os = strtolower(php_uname('s'));
         $arch = strtolower(php_uname('m'));
 
-        $version = $this->option('ver');
+        $version = $this->option('ver') ? ltrim($this->option('ver'), 'vV') : null;
 
         $this->info("OS: $os, Architecture: $arch");
         $this->newLine();
 
-        if(in_array($os, ['linux'])){ //linux
-            if(in_array($arch, ['x86_64', 'amd64'])){
-                $this->downloadCli('linux', 'amd64', $version);
-            }else{
-                $this->downloadCli('linux', $arch, $version);
+        if ($os === 'linux') {
+            $platform = match ($arch) {
+                'x86_64', 'amd64' => 'amd64',
+                'aarch64', 'arm64' => 'arm64',
+                default => $arch,
+            };
+
+            if ($this->isMusl()) {
+                $platform .= '-musl';
             }
-        } elseif (in_array($os, ['darwin'])){
+
+            $this->downloadCli('linux', $platform, $version);
+        } elseif ($os === 'darwin') {
             $this->downloadCli('osx', 'universal', $version);
-        }else{
+        } else {
             throw new \Exception('Not Supported! Currently Only linux, mac supported. Try manually downloading cli from: https://duckdb.org/docs/installation/');
-            return;
         }
     }
 
-    private function downloadCli($os, $arch, $version = null){
+    private function isMusl(): bool
+    {
+        return file_exists('/etc/alpine-release');
+    }
 
-        $duck_base_url = "https://github.com/duckdb/duckdb/releases/latest/download/duckdb_cli-__OS__-__PLATEFORM__.zip";
+    private function downloadCli(string $os, string $platform, ?string $version = null): void
+    {
+        // Since DuckDB v2.0.0 the CLI is released as `duckdb-cli-<os>-<platform>.tar.gz`,
+        // older releases used `duckdb_cli-<os>-<platform>.zip`.
+        $useTarball = $version === null || version_compare($version, '2.0.0', '>=');
 
-        if ($version) {
-            $duck_base_url = "https://github.com/duckdb/duckdb/releases/download/v$version/duckdb_cli-__OS__-__PLATEFORM__.zip";
-        }
+        $fileName = $useTarball
+            ? "duckdb-cli-$os-$platform.tar.gz"
+            : "duckdb_cli-$os-$platform.zip";
 
-        $url = str_replace(array('__OS__', '__PLATEFORM__'), array($os, $arch), $duck_base_url);
+        $url = $version
+            ? "https://github.com/duckdb/duckdb/releases/download/v$version/$fileName"
+            : "https://github.com/duckdb/duckdb/releases/latest/download/$fileName";
 
         $this->info("Downloading cli($url)...");
         $this->newLine();
-        $res = Http::timeout(10*60)
-                ->retry(2, 100)
-                ->get($url);
 
-        $content = $res->body();
-        //'vendor/bin/duckdb'
-        file_put_contents('/tmp/duckdb_cli.zip', $content);
+        $res = Http::timeout(10 * 60)
+            ->retry(2, 100)
+            ->get($url);
+
+        if (! $res->successful()) {
+            throw new \Exception("Failed to download DuckDB CLI from $url (HTTP {$res->status()})");
+        }
+
+        $tmpDir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'duckdb_cli_'.uniqid();
+        mkdir($tmpDir, 0755, true);
+        $archivePath = $tmpDir.DIRECTORY_SEPARATOR.$fileName;
+        file_put_contents($archivePath, $res->body());
 
         $this->info('Extracting cli...');
         $this->newLine();
-        $zip = new \ZipArchive();
-        $zipRes = $zip->open('/tmp/duckdb_cli.zip');
-        if($zipRes){
-            $zip->extractTo(base_path('vendor/bin/'));
-            $zip->close();
 
-            chmod(base_path('vendor/bin/duckdb'), 0755);
-            $this->info('Done! cli located at `'.base_path('vendor/bin/duckdb').'`');
+        $targetDir = base_path('vendor/bin');
+        if (! is_dir($targetDir)) {
+            mkdir($targetDir, 0755, true);
         }
+
+        try {
+            if ($useTarball) {
+                $this->extractTarball($archivePath, $targetDir);
+            } else {
+                $this->extractZip($archivePath, $targetDir);
+            }
+        } finally {
+            @unlink($archivePath);
+            @rmdir($tmpDir);
+        }
+
+        $binary = $targetDir.DIRECTORY_SEPARATOR.'duckdb';
+        if (! file_exists($binary)) {
+            throw new \Exception("Extraction finished but `$binary` was not found.");
+        }
+
+        chmod($binary, 0755);
+        $this->info('Done! cli located at `'.$binary.'`');
+    }
+
+    private function extractTarball(string $archivePath, string $targetDir): void
+    {
+        $phar = new \PharData($archivePath);
+        $phar->extractTo($targetDir, 'duckdb', true);
+    }
+
+    private function extractZip(string $archivePath, string $targetDir): void
+    {
+        $zip = new \ZipArchive();
+        if ($zip->open($archivePath) !== true) {
+            throw new \Exception("Could not open zip archive `$archivePath`.");
+        }
+
+        $zip->extractTo($targetDir);
+        $zip->close();
     }
 }
