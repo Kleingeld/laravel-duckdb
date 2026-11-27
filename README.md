@@ -8,7 +8,9 @@ https://github.com/duckdb/duckdb
     - https://duckdb.org/docs/installation/
     - https://github.com/duckdb/duckdb/releases/latest
     - run `php artisan laravel-duckdb:download-cli` (Experimental)
-    - You can also pass argument `--ver` for specific version like `php artisan laravel-duckdb:download-cli --ver=0.7.1` 
+        - Downloads the latest CLI for your OS/architecture to `vendor/bin/duckdb` (Linux amd64/arm64, including musl on Alpine, and macOS universal)
+        - Pass `--ver` for a specific version, e.g. `php artisan laravel-duckdb:download-cli --ver=2.0.1` (a leading `v` is allowed)
+        - DuckDB 2.0.0 and newer are downloaded as `.tar.gz` (requires the `phar` extension); older versions as `.zip` (requires the `zip` extension)
 
 ## Support us
 
